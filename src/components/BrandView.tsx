@@ -8,6 +8,7 @@ import {
   CreatorProfile 
 } from '../types.js';
 import CollabHubView from './CollabHubView.js';
+import GoogleTasksSync from './GoogleTasksSync.js';
 import { 
   ShieldCheck, 
   DollarSign, 
@@ -521,6 +522,15 @@ export default function BrandView({
                 </div>
               )}
             </div>
+
+            {/* Google Tasks Sync Integration Widget */}
+            <GoogleTasksSync 
+              state={state} 
+              currentRole="brand" 
+              userEmail={brand.name} 
+              isRtl={isRtl} 
+              accentColor="orange" 
+            />
 
           </div>
 

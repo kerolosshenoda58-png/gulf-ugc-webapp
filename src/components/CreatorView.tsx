@@ -7,6 +7,7 @@ import {
   ActiveProject 
 } from '../types.js';
 import CollabHubView from './CollabHubView.js';
+import GoogleTasksSync from './GoogleTasksSync.js';
 import { 
   ShieldCheck, 
   DollarSign, 
@@ -459,6 +460,15 @@ export default function CreatorView({
                 </div>
               )}
             </div>
+
+            {/* Google Tasks Sync Integration Widget */}
+            <GoogleTasksSync 
+              state={state} 
+              currentRole="creator" 
+              userEmail={creator.handle} 
+              isRtl={isRtl} 
+              accentColor="violet" 
+            />
 
           </div>
 
