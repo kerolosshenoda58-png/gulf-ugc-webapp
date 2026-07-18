@@ -1,0 +1,6 @@
+{
+  "name": "UGC GULF",
+  "description": "The Gulf's #1 UGC Creator Marketplace. Hire Gulf agencies and top creators across UAE, KSA, and Egypt. Secure campaigns with Spotless Pay Escrow.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
