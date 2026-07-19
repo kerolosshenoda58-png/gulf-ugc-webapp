@@ -560,6 +560,59 @@ app.post("/api/reset", (req, res) => {
   res.json({ message: "Database reset successful", state: dbState });
 });
 
+// User Authentication Simulation
+app.post("/api/auth/signin", (req, res) => {
+  const { email, role } = req.body;
+  if (!email || !role) {
+    return res.status(400).json({ error: "Email and role are required" });
+  }
+
+  // Ensure user is present in dbState (or create a custom simulated entry)
+  if (role === "creator") {
+    const existingCreator = dbState.creators.find(c => c.id === email || c.id === "creator_sofia");
+    if (!existingCreator) {
+      dbState.creators.push({
+        id: email,
+        name: email.split("@")[0].toUpperCase(),
+        handle: "@" + email.split("@")[0],
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+        country: "UAE",
+        city: "Dubai",
+        rating: 5.0,
+        reviewCount: 0,
+        verified: true,
+        niches: ["Beauty & Skincare"],
+        languages: ["English"],
+        followerCount: 1000,
+        onTimeRate: 100,
+        revisionRate: 0,
+        repeatClients: 0,
+        bio: "Simulated Creator Profile",
+        portfolio: [],
+        lvl: 1,
+        exp: 0,
+        vettingStatus: "approved"
+      });
+    }
+  } else if (role === "brand") {
+    const existingBrand = dbState.brands.find(b => b.id === email || b.id === "brand_novaskin");
+    if (!existingBrand) {
+      dbState.brands.push({
+        id: email,
+        name: email.split("@")[0].toUpperCase() + " Brand",
+        industry: "Beauty & Skincare",
+        city: "Dubai",
+        country: "UAE",
+        logo: "✨",
+        budgetLeft: 10000,
+        totalSpent: 0
+      });
+    }
+  }
+
+  res.json({ email, role });
+});
+
 // Gigs and Collaboration API (Contra style)
 app.post("/api/gigs/create", (req, res) => {
   const { posterId, posterName, posterAvatar, posterType, title, role, description, budget, country, dialect, requirements } = req.body;
@@ -1038,6 +1091,30 @@ app.post("/api/projects/submit", (req, res) => {
   res.json({ project });
 });
 
+// Alias for Submit Draft
+app.post("/api/projects/submit-draft", (req, res) => {
+  const { projectId, videoUrl, notes } = req.body;
+  const project = dbState.projects.find(p => p.id === projectId);
+
+  if (!project) {
+    return res.status(404).json({ error: "Project not found" });
+  }
+
+  const newVersion = project.submissions.length + 1;
+  const newSubmission = {
+    version: newVersion,
+    videoUrl: videoUrl || "https://assets.mixkit.co/videos/preview/mixkit-girl-applying-skincare-product-to-her-face-34440-large.mp4",
+    thumbnailUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=400",
+    timestamp: new Date().toISOString(),
+    notes: notes || `Submission draft v${newVersion}`
+  };
+
+  project.submissions.push(newSubmission);
+  project.status = "in_review";
+
+  res.json({ project });
+});
+
 // Brand: Request Revision
 app.post("/api/projects/revision", (req, res) => {
   const { projectId, commentText } = req.body;
@@ -1138,6 +1215,43 @@ app.post("/api/disputes/create", (req, res) => {
   res.json({ dispute: newDispute, project });
 });
 
+// Alias for Creator/Brand Initiate Dispute
+app.post("/api/projects/dispute", (req, res) => {
+  const { projectId, reason } = req.body;
+  const project = dbState.projects.find(p => p.id === projectId);
+
+  if (!project) {
+    return res.status(404).json({ error: "Project not found" });
+  }
+
+  project.status = "revision_needed"; // freeze state
+  project.escrowStatus = "disputed";
+
+  const newDispute: Dispute = {
+    id: `dispute_${Date.now()}`,
+    projectId,
+    campaignTitle: project.campaignTitle,
+    brandId: project.brandId,
+    brandName: project.brandName,
+    creatorId: project.creatorId,
+    creatorName: project.creatorName,
+    amount: project.amountHeld,
+    reason,
+    status: "open",
+    comments: [
+      {
+        sender: "brand",
+        text: `Dispute filed. Reason: ${reason}`,
+        timestamp: new Date().toISOString()
+      }
+    ],
+    timestamp: new Date().toISOString()
+  };
+
+  dbState.disputes.unshift(newDispute);
+  res.json({ dispute: newDispute, project });
+});
+
 // Disputes: Comment on Dispute
 app.post("/api/disputes/comment", (req, res) => {
   const { disputeId, sender, text } = req.body;
@@ -1174,6 +1288,172 @@ app.post("/api/admin/vetting", (req, res) => {
   }
 
   res.json({ creator });
+});
+
+// Admin: Approve Creator (Alias)
+app.post("/api/admin/vetting/approve", (req, res) => {
+  const { creatorId } = req.body;
+  const creator = dbState.creators.find(c => c.id === creatorId);
+
+  if (!creator) {
+    return res.status(404).json({ error: "Creator not found" });
+  }
+
+  creator.vettingStatus = "approved";
+  creator.verified = true;
+
+  res.json({ creator });
+});
+
+// Admin: Reject Creator (Alias)
+app.post("/api/admin/vetting/reject", (req, res) => {
+  const { creatorId } = req.body;
+  const creator = dbState.creators.find(c => c.id === creatorId);
+
+  if (!creator) {
+    return res.status(404).json({ error: "Creator not found" });
+  }
+
+  creator.vettingStatus = "rejected";
+  creator.verified = false;
+
+  res.json({ creator });
+});
+
+// Admin: Resolve Dispute (escrow payouts - Alias/Frontend compat)
+app.post("/api/projects/resolve-dispute", (req, res) => {
+  const { projectId, resolution, splitCreatorAmount, splitBrandAmount } = req.body;
+  const project = dbState.projects.find(p => p.id === projectId);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  let dispute = dbState.disputes.find(d => d.projectId === projectId);
+  if (!dispute) {
+    // create a simulated open dispute if missing
+    dispute = {
+      id: `dispute_${Date.now()}`,
+      projectId,
+      campaignTitle: project.campaignTitle,
+      brandId: project.brandId,
+      brandName: project.brandName,
+      creatorId: project.creatorId,
+      creatorName: project.creatorName,
+      amount: project.amountHeld,
+      reason: "Simulated dispute",
+      status: "open",
+      comments: [],
+      timestamp: new Date().toISOString()
+    };
+    dbState.disputes.unshift(dispute);
+  }
+
+  dispute.status = "resolved";
+  dispute.resolution = resolution === "creator" ? "released_to_creator" : (resolution === "brand" ? "refunded_to_brand" : "split");
+
+  if (resolution === "creator") {
+    project.status = "approved";
+    project.escrowStatus = "released";
+    dispute.comments.push({
+      sender: "admin",
+      text: "Resolution: Escrow fully released to the creator.",
+      timestamp: new Date().toISOString()
+    });
+
+    const creator = dbState.creators.find(c => c.id === project.creatorId);
+    if (creator) {
+      creator.exp += 300;
+    }
+
+    dbState.transactions.unshift({
+      id: `tx_${Date.now()}`,
+      brandId: project.brandId,
+      creatorId: project.creatorId,
+      brandName: project.brandName,
+      creatorName: project.creatorName,
+      campaignTitle: project.campaignTitle,
+      amount: dispute.amount,
+      type: "escrow_release",
+      timestamp: new Date().toISOString(),
+      status: "completed"
+    });
+  } else if (resolution === "brand") {
+    project.status = "rejected";
+    project.escrowStatus = "refunded";
+    dispute.comments.push({
+      sender: "admin",
+      text: "Resolution: Escrow fully refunded to the brand.",
+      timestamp: new Date().toISOString()
+    });
+
+    const brand = dbState.brands.find(b => b.id === project.brandId);
+    if (brand) {
+      brand.budgetLeft += dispute.amount;
+    }
+
+    dbState.transactions.unshift({
+      id: `tx_${Date.now()}`,
+      brandId: project.brandId,
+      creatorId: project.creatorId,
+      brandName: project.brandName,
+      creatorName: project.creatorName,
+      campaignTitle: project.campaignTitle,
+      amount: dispute.amount,
+      type: "refund",
+      timestamp: new Date().toISOString(),
+      status: "completed"
+    });
+  } else if (resolution === "split") {
+    const creatorAmt = Number(splitCreatorAmount) || Math.floor(dispute.amount / 2);
+    const brandAmt = Number(splitBrandAmount) || Math.ceil(dispute.amount / 2);
+
+    project.status = "approved";
+    project.escrowStatus = "released";
+    dispute.splitCreatorAmount = creatorAmt;
+    dispute.splitBrandAmount = brandAmt;
+
+    dispute.comments.push({
+      sender: "admin",
+      text: `Resolution: Escrow split resolved. Released $${creatorAmt} to Creator, Refunded $${brandAmt} to Brand.`,
+      timestamp: new Date().toISOString()
+    });
+
+    const creator = dbState.creators.find(c => c.id === project.creatorId);
+    if (creator) {
+      creator.exp += 150;
+    }
+
+    const brand = dbState.brands.find(b => b.id === project.brandId);
+    if (brand) {
+      brand.budgetLeft += brandAmt;
+    }
+
+    dbState.transactions.unshift({
+      id: `tx_split_c_${Date.now()}`,
+      brandId: project.brandId,
+      creatorId: project.creatorId,
+      brandName: project.brandName,
+      creatorName: project.creatorName,
+      campaignTitle: project.campaignTitle + " (Dispute Split - Creator)",
+      amount: creatorAmt,
+      type: "dispute_payout",
+      timestamp: new Date().toISOString(),
+      status: "completed"
+    });
+
+    dbState.transactions.unshift({
+      id: `tx_split_b_${Date.now()}`,
+      brandId: project.brandId,
+      creatorId: project.creatorId,
+      brandName: project.brandName,
+      creatorName: project.creatorName,
+      campaignTitle: project.campaignTitle + " (Dispute Split - Brand Refund)",
+      amount: brandAmt,
+      type: "refund",
+      timestamp: new Date().toISOString(),
+      status: "completed"
+    });
+  }
+
+  res.json({ dispute, project });
 });
 
 // Admin: Resolve Dispute (escrow payouts)
@@ -1301,6 +1581,74 @@ app.post("/api/admin/resolve-dispute", (req, res) => {
   }
 
   res.json({ dispute, project });
+});
+
+// Creova OS AI Companion using Server-side Gemini 3.5 Flash
+app.post("/api/ai/generate-creova", async (req, res) => {
+  const { prompt, type, lang } = req.body;
+  const isRtl = lang === "ar";
+
+  if (!prompt) {
+    return res.status(400).json({ error: "Prompt is required" });
+  }
+
+  // System instruction based on the output type
+  let systemInstruction = "You are Creova AI, the premier UGC intelligence companion for the Middle East (UAE, Saudi Arabia, Egypt). ";
+  if (type === "script") {
+    systemInstruction += "Generate a highly engaging, high-converting 30-second TikTok / Reels video script with visual cues, precise pacing, clear Arabic & English localization, hooks, and a strong call-to-action.";
+  } else if (type === "brief") {
+    systemInstruction += "Write a highly professional UGC campaign brief for brands, listing campaign goals, aesthetic direction, creator criteria, and Spotless Pay Escrow budgets.";
+  } else if (type === "pricing") {
+    systemInstruction += "Analyze market rates for a UGC creator with the given details, suggesting optimal pricing ranges for deliverables, raw files, and usage rights in KSA, UAE, and Egypt.";
+  } else {
+    systemInstruction += "Predict campaign success score, audience engagement, estimated reach, and ROI prediction based on regional GCC consumer behaviors.";
+  }
+
+  if (isRtl) {
+    systemInstruction += " Respond in professional, highly persuasive and modern Arabic language (or dual English-Arabic).";
+  } else {
+    systemInstruction += " Respond in professional, clear, and modern English.";
+  }
+
+  try {
+    if (ai) {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          systemInstruction: systemInstruction,
+          temperature: 0.7,
+        }
+      });
+
+      const output = response.text || "No output generated from Gemini.";
+      return res.json({ output });
+    } else {
+      // Graceful local intelligence fallback in case API key is missing
+      let fallbackText = "";
+      if (type === "script") {
+        fallbackText = isRtl
+          ? `🎬 **[Creova AI - سيناريو فيديو متكامل للخليج]**\n\n**المقدمة الجاذبة (0-3 ثوان):** "إذا كنتِ تبحثين عن البشرة الزجاجية المثالية في رطوبة الصيف بالرياض... توقفي هنا!" *[لقطة قريبة: صانعة المحتوى تطبق مصل نوفاسكين البراق]*\n\n**المحتوى الأساسي (3-15 ثانية):** "كثير منا يظن أن الحرارة العالية تعني بشرة دهنية ومسامات مغلقة. لكن شاهدي هذا التألق الطبيعي بدون لزوجة. واقي الشمس هذا خفيف ومصمم لنساء الخليج النشيطات."\n\n**الدعوة لاتخاذ إجراء (15-30 ثانية):** "اضغطي على الرابط أدناه لحجز عبوتك الخاصة مع كود الخصم الخاص بي SOFIA15!"`
+          : `🎬 **[Creova AI - High-Converting UGC Script]**\n\n**Hook (0-3s):** "Stop scrolling if you are still applying heavy moisturizers in the GCC summer heat!" *[Visual: Close-up of Sofia applying premium glass-skin gel]*\n\n**Core Story (3-15s):** "Living in Dubai, I need extreme hydration without the sticky residue. This SPF 50 serum absorbs in under 5 seconds and leaves a flawless dewy finish."\n\n**CTA (15-30s):** "Tap below to shop and use my exclusive code SOFIA15 for 15% off at checkout!"`;
+      } else if (type === "brief") {
+        fallbackText = isRtl
+          ? `📋 **[Creova AI - موجز الحملة الإعلانية]**\n\n**عنوان الحملة:** صيف الخليج المشرق مع واقي شمس نوفاسكين\n**الفئة المستهدفة:** خبيرات العناية بالبشرة والتجميل في الإمارات والسعودية\n**المخرجات المطلوبة:** فيديو ريلز/تيك توك واحد يبرز قوام المنتج والامتصاص الفوري.\n**الميزانية المودعة في الضمان:** 450$ لكل فيديو + طقم تجريبي متكامل للطلب المسبق.`
+          : `📋 **[Creova AI - Campaign Brief Builder]**\n\n**Campaign Title:** Glow & Hydrate MENA Summer Launch\n**Target Creator Profile:** Female skincare experts (18-32) in KSA & UAE\n**Required Deliverables:** 1x TikTok/Instagram Reel focusing on texture close-ups and morning application routines.\n**Core Aesthetics:** High-key warm daylight, clean bathroom backdrop, minimal elegant font overlays.\n**Compensation:** $450 guaranteed escrow hold per video + free physical product kit.`;
+      } else if (type === "pricing") {
+        fallbackText = isRtl
+          ? `💰 **[Creova AI - تسعير ذكي مبني على السوق]**\n\nبناءً على اتجاهات سوق صانعي محتوى التجميل في دبي والرياض لعام 2026:\n- **سعر الفيديو الأساسي الموصى به:** 400$ - 550$ دولار أمريكي\n- **حقوق الاستخدام التجاري (30 يوم):** إضافة 20%\n- **حزمة المواد الخام الكاملة:** إضافة 25%`
+          : `💰 **[Creova AI - Smart Pricing Intelligence]**\n\nBased on regional market trends for UAE & KSA UGC content in the Skincare niche with 4.98 Rating:\n- **Recommended Single Deliverable Rate:** $420 - $550 USD\n- **With Raw Footage licensing (30 Days):** Add 25% ($525 - $685 USD)\n- **Regional Engagement Premium:** +15% due to high Riyadh/Dubai audience density.`;
+      } else {
+        fallbackText = isRtl
+          ? `🎯 **[توقعات النجاح والعائد الإعلاني]**\n- **نسبة ملاءمة الجمهور المستهدف:** 96%\n- **عدد المشاهدات المتوقعة:** 30,000 - 55,000 لكل مقطع\n- **معدل النقر المتوقع (CTR):** 3.9% (يتجاوز متوسط ​​الخليج البالغ 2.1٪)`
+          : `🎯 **[Creova Success & ROI Predictor]**\n- **Target Audience Relevance Score:** 96%\n- **Estimated Organic Views:** 25,000 - 45,000 per video\n- **Predicted Click-Through Rate (CTR):** 3.8% (GCC standard average is 2.1%)`;
+      }
+      return res.json({ output: fallbackText });
+    }
+  } catch (error: any) {
+    console.error("Gemini compilation error in Creova OS:", error);
+    res.status(500).json({ error: error.message || "Failed to contact Gemini" });
+  }
 });
 
 // Configure Vite middleware in development

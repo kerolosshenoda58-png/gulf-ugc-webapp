@@ -8,6 +8,7 @@ import {
 } from '../types.js';
 import CollabHubView from './CollabHubView.js';
 import GoogleTasksSync from './GoogleTasksSync.js';
+import CreovaOSToolkit from './CreovaOSToolkit.js';
 import { 
   ShieldCheck, 
   DollarSign, 
@@ -231,6 +232,7 @@ export default function CreatorView({
           { id: 'find_gigs', label_en: 'Find Gigs', label_ar: 'ابحث عن صفقات' },
           { id: 'my_projects', label_en: 'My Projects', label_ar: 'مشاريعي', count: activeProjects.length },
           { id: 'collab_hub', label_en: 'Collab Hub (Contra)', label_ar: 'مركز التعاون المشترك' },
+          { id: 'creova_os', label_en: '⚡ Creova OS Suite', label_ar: '⚡ نظام تشغيل كريوفا التوليدي' },
           { id: 'portfolio', label_en: 'My Portfolio', label_ar: 'معرض أعمالي' },
           { id: 'earnings', label_en: 'Earnings & Billing', label_ar: 'الأرباح والفواتير' },
         ].map((tab) => (
@@ -1147,6 +1149,18 @@ export default function CreatorView({
             </div>
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'creova_os' && (
+        <div id="creova_os_tab_content" className="animate-fade-in">
+          <CreovaOSToolkit
+            state={state}
+            currentRole="creator"
+            userEmail={creator.id}
+            isRtl={isRtl}
+            refreshState={refreshState}
+          />
         </div>
       )}
 
